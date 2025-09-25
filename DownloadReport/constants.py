@@ -1,0 +1,16 @@
+PROJECT_DETAILS = 'project_details'
+PROJECT_GEOGRAPHY_DETAILS = 'project_geography_details'
+PROJECT_TEAM_DETAILS = 'project_team_details'
+PROJECT_PRODUCT_DETAILS = 'project_product_details'
+PRODUCT_DETAILS = 'product_details'
+PRODUCT_DETAILS_TECH = 'product_details_tech'
+TECHNOLOGY_PRODUCT_DETAILS = 'technology_product_details'
+PRODUCT_CHILD_COMPOSITION_CUC = 'product_child_composition_cuc'
+PROJECT_CLAIMS_DETAILS = 'project_claims_details'
+CLAIMS_DETAILS = 'claims_details'
+
+
+PRODUCT__V = 'product__v'
+TECHNOLOGY_ID_C = 'technology_id__c'
+TECHNOLOGY_ID_1_C = 'technology_id_1__c'
+CLAIM_V = 'claim__v'
