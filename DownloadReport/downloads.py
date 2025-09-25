@@ -4,6 +4,7 @@ from .payload import payloads
 import asyncio
 from .constants import *
 from typing import Callable, Awaitable
+from collections import defaultdict
 
 
 class DownloadReport(VeevaClient):
@@ -12,6 +13,7 @@ class DownloadReport(VeevaClient):
         self.dataframes: dict[str, pd.DataFrame] = {}
         self.return_value = {}
         self.tasks = {}
+        self.report_name = "DownloadReport"
         super().__init__(veeva_domain, veeva_api_version, session_id, app_id)
 
     async def get_details(self, key: str) -> list[dict]:
@@ -171,10 +173,47 @@ class DownloadReport(VeevaClient):
     def combine_product_child_composition(self):
         child_cuc_df = self.get_df(PRODUCT_CHILD_COMPOSITION_CUC)
         cuc_geo_df = self.get_df(CUC_GEOGRAPHY_DETAILS)
+        formulation_doc_details_df = self.get_df(FORMULATION_DOC_DETAILS)
         if child_cuc_df.empty:
             return
         child_cuc_df[CHILD__VR_GEOGRAPHY_NAME] = child_cuc_df[CHILD__VR_GEOGRAPHY__C]\
             .apply(lambda x: get_details_by_id(x, cuc_geo_df)[NAME__V] if x is not None else None)
+        child_cuc_df[[
+            CHILD__VR_FORMULATION_DOCUMENT_ID, 
+            CHILD__VR_FORMULATION_DOCUMENT_NAME, 
+            CHILD__VR_FORMULATION_DOCUMENT_FILENAME,
+            FORMULATION_DOCUMENT_MIME_TYPE,
+            CHILD__VR_FORMULATION_MINOR_VERSION_NUMBER,
+            CHILD__VR_FORMULATION_MAJOR_VERSION_NUMBER,
+            CHILD__VR_FORMULATION_LINK
+        ]] = \
+            child_cuc_df[CHILD__VR_FORMULATION_DOCUMENT__C].apply(lambda x:get_formulation_doc_details_by_id(x, formulation_doc_details_df))
+        child_cuc_df[[CHILD__VR_FORMULATION_DOCUMENT_ID, CHILD__VR_FORMULATION_MAJOR_VERSION_NUMBER, CHILD__VR_FORMULATION_MINOR_VERSION_NUMBER]] = child_cuc_df[[
+            CHILD__VR_FORMULATION_DOCUMENT_ID, CHILD__VR_FORMULATION_MAJOR_VERSION_NUMBER, CHILD__VR_FORMULATION_MINOR_VERSION_NUMBER
+            ]].astype('Int64')
+        child_cuc_df[CHILD__VR_FORMULATION_LINK] = child_cuc_df[CHILD__VR_FORMULATION_LINK].apply(lambda x: f"{self.veeva_domain}{x}" if x else None)
+        self.return_value[PRODUCT_CHILD_COMPOSITION_CUC] = child_cuc_df.to_dict(orient='records')
+
+    def combine_claim(self):
+        claim_df = self.get_df(CLAIMS_DETAILS)
+        product_df = self.get_df(PRODUCT_DETAILS)
+        claim_substantiation_df = self.get_df(CLAIM_SUBSTANTIATION_JOIN_DETAILS)
+        claim_risk_df = self.get_df(CLAIM_RISK_ASSESSMENT_DETAILS)
+        if claim_df.empty:
+            return
+        claim_df = calculate_row_count_per_claim_df(claim_df, claim_substantiation_df, claim_risk_df)
+        product_lookup = product_df.set_index(ID)[SUBRANGE1__C].to_dict()
+        tech_to_product = defaultdict(list)
+        for _, row in product_df.iterrows():
+            if row[TECHNOLOGY_ID_C]:
+                tech_to_product[row[TECHNOLOGY_ID_C]].append(row[ID])
+            if row[TECHNOLOGY_ID_1_C]:
+                tech_to_product[row[TECHNOLOGY_ID_1_C]].append(row[ID])
+        claim_df[SUBRANGE] = claim_df[PRODUCT__V].map(product_lookup)
+        claim_df[SUBRANGE] = claim_df[SUBRANGE].astype(bool)
+        claim_df[TECHNOLOGY] = claim_df[PRODUCT__V].apply(lambda p: tech_to_product.get(p, []))
+        claim_df[CLAIM_ORDER_C] = claim_df[CLAIM_ORDER_C].astype('Int64')
+        self.return_value[CLAIMS_DETAILS] = claim_df.to_dict(orient='records')
 
     async def run(self):
         pending = set(self.tasks.keys())
@@ -225,4 +264,5 @@ class VeevaMasterReport(DownloadReport):
         self.combine_project()
         self.combine_technology_product_data()
         self.combine_product_child_composition()
+        self.combine_claim()
         return self.return_value

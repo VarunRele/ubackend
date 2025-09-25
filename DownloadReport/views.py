@@ -43,6 +43,7 @@ class DownloadReport(views.APIView):
         serializer.is_valid(raise_exception=True)
         valid_data = serializer.validated_data
         session_id = request.headers.get('Authorization')
+        assert isinstance(valid_data, dict)
         project_id = valid_data['project_id']
         client = VeevaMasterReport(config.VEEVA_DOMAIN, config.VEEVA_API_VERSION, session_id, config.VEEVA_APP_ID, project_id)
         return_value = asyncio.run(client.run())

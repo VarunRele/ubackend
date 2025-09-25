@@ -1,5 +1,8 @@
 import pandas as pd
 from .constants import *
+from DownloadReport.constants import *
+import mimetypes
+import pathlib
 
 
 def get_query_params(df: pd.DataFrame, column: str) -> str:
@@ -16,8 +19,8 @@ def get_query_params_list_element(df: pd.DataFrame, column: str) -> str:
 
 
 def calculate_row_count_per_claim_df(claim_df: pd.DataFrame, substantiation_df: pd.DataFrame, risk_df: pd.DataFrame) -> pd.DataFrame:
-    claim_df['subrange'] = False
-    claim_df['technology'] = [[] for _ in range(len(claim_df))]
+    claim_df[SUBRANGE] = False
+    claim_df[TECHNOLOGY] = [[] for _ in range(len(claim_df))]
     sub_counts = substantiation_df['claim__v'].value_counts() if not substantiation_df.empty else pd.Series(dtype=int)
     risk_counts = risk_df['claim__c'].value_counts() if not risk_df.empty else pd.Series(dtype=int)
 
@@ -36,8 +39,8 @@ def calculate_row_count_per_claim_df(claim_df: pd.DataFrame, substantiation_df: 
 
 
 def calculate_row_count_per_la_df(la_df: pd.DataFrame, substantiation_df: pd.DataFrame, risk_df: pd.DataFrame) -> pd.DataFrame:
-    la_df['subrange'] = False
-    la_df['technology'] = [[] for _ in range(len(la_df))]
+    la_df[SUBRANGE] = False
+    la_df[TECHNOLOGY] = [[] for _ in range(len(la_df))]
     sub_counts = substantiation_df['local_adaptation__c'].value_counts() if not substantiation_df.empty else pd.Series(dtype=int)
     risk_counts = risk_df['local_adaptation__c'].value_counts() if not risk_df.empty else pd.Series(dtype=int)
 
@@ -72,15 +75,29 @@ def get_details_by_id(id: int | str, df: pd.DataFrame) -> dict:
     matched_user = df[df['id'] == str(id)]
     return matched_user.iloc[0].to_dict() if not matched_user.empty else {}
 
-def get_formulation_doc_details_by_id(doc_id: int, major_version: int, minor_version: int, formulation_doc_details_df: pd.DataFrame) -> dict:
-    if formulation_doc_details_df.empty:
-        return {}
+def get_formulation_doc_details_by_id(val: str, formulation_doc_details_df: pd.DataFrame) -> pd.Series:
+    default = pd.Series([None, None, None, None, None, None, None])
+    if formulation_doc_details_df.empty or val is None:
+        return default
+    doc_id, major_version, minor_version = val.split("_")
     matched_formulation = formulation_doc_details_df[
-            (formulation_doc_details_df['id'] == str(doc_id)) &
-            (formulation_doc_details_df['minor_version_number__v'] == str(minor_version)) &
-            (formulation_doc_details_df['major_version_number__v'] == str(major_version))
+            (formulation_doc_details_df['id'] == int(doc_id)) &
+            (formulation_doc_details_df['minor_version_number__v'] == int(minor_version)) &
+            (formulation_doc_details_df['major_version_number__v'] == int(major_version))
         ]
-    return matched_formulation.iloc[0].to_dict() if not matched_formulation.empty else {}
+    if matched_formulation.empty:
+        return default
+    match_dict = matched_formulation.iloc[0].to_dict()
+    mime = mimetypes.guess_type(str(match_dict[FILENAME__V]), strict=False)[0]
+    return pd.Series([
+        match_dict[ID],
+        match_dict[NAME__V],
+        match_dict[FILENAME__V],
+        mime if mime else pathlib.Path(str(match_dict[FILENAME__V])).suffix,
+        match_dict[MINOR_VERSION_NUMBER__V],
+        match_dict[MAJOR_VERSION_NUMBER__V],
+        f"/ui/#doc_info/{match_dict[ID]}/{match_dict[MAJOR_VERSION_NUMBER__V]}/{match_dict[MINOR_VERSION_NUMBER__V]}"
+    ])
 
 def get_assets_details_by_id(geography_id: int | str, df: pd.DataFrame) -> str:
     """
@@ -89,7 +106,7 @@ def get_assets_details_by_id(geography_id: int | str, df: pd.DataFrame) -> str:
     La - assets_la_details_by_id
     """
     if df.empty:
-        return {}
+        return ""
     matched_assets_geo = df[df['id'] == str(geography_id)]
     return matched_assets_geo.iloc[0]['name__v'] if not matched_assets_geo.empty else ""
 
