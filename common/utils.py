@@ -4,14 +4,14 @@ from .constants import *
 
 def get_query_params(df: pd.DataFrame, column: str) -> str:
     """
-    Returns commo-seperated strings for query
+    Returns comma-seperated strings for query
     """
-    return ','.join(df[column].dropna().apply(lambda x: f"'{x}'").tolist()) if not df.empty else "NA"
+    return ','.join(df[column].dropna().apply(lambda x: f"'{x}'").tolist()) if not df.empty else "'NA'"
 
 def get_query_params_list_element(df: pd.DataFrame, column: str) -> str:
     return (
         ','.join(df[column].explode().dropna().apply(lambda x: f"'{x}'").unique().tolist())
-        if not df.empty else "NA"
+        if not df.empty else "'NA'"
     )
 
 
@@ -92,3 +92,9 @@ def get_assets_details_by_id(geography_id: int | str, df: pd.DataFrame) -> str:
         return {}
     matched_assets_geo = df[df['id'] == str(geography_id)]
     return matched_assets_geo.iloc[0]['name__v'] if not matched_assets_geo.empty else ""
+
+def get_technology_formulation_link(value: str) -> str:
+    if value is None or not value:
+        return ""
+    id, major, minor = value.split("_")
+    return f"/ui/#doc_info/{id}/{major}/{minor}"
