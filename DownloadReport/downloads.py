@@ -133,7 +133,8 @@ class DownloadReport(VeevaClient):
     async def get_formulation_doc_details(self) -> list[dict]:
         formulation_doc_details_list = []
         product_child_composition_cuc_df = pd.DataFrame(self.return_value[PRODUCT_CHILD_COMPOSITION_CUC])        
-        product_child_composition_cuc_df = product_child_composition_cuc_df.dropna(subset=[CHILD__VR_FORMULATION_DOCUMENT__C])
+        if not product_child_composition_cuc_df.empty:
+            product_child_composition_cuc_df = product_child_composition_cuc_df.dropna(subset=[CHILD__VR_FORMULATION_DOCUMENT__C])
         for idx, row in product_child_composition_cuc_df.iterrows():
             doc_id_to_query = row[CHILD__VR_FORMULATION_DOCUMENT__C].split("_")[0]
             major_verison_no = row[CHILD__VR_FORMULATION_DOCUMENT__C].split("_")[1]
@@ -194,14 +195,15 @@ class DownloadReport(VeevaClient):
         child_cuc_df[CHILD__VR_FORMULATION_LINK] = child_cuc_df[CHILD__VR_FORMULATION_LINK].apply(lambda x: f"{self.veeva_domain}{x}" if x else None)
         self.return_value[PRODUCT_CHILD_COMPOSITION_CUC] = child_cuc_df.to_dict(orient='records')
 
-    def combine_claim(self):
-        claim_df = self.get_df(CLAIMS_DETAILS)
+    def combine_row_count(self, value: str):
+        master= row_count_map[value]
+        df = self.get_df(master['df'])
         product_df = self.get_df(PRODUCT_DETAILS)
-        claim_substantiation_df = self.get_df(CLAIM_SUBSTANTIATION_JOIN_DETAILS)
-        claim_risk_df = self.get_df(CLAIM_RISK_ASSESSMENT_DETAILS)
-        if claim_df.empty:
+        substantiation_df = self.get_df(master['substantiation'])
+        risk_df = self.get_df(master['risk'])
+        if df.empty:
             return
-        claim_df = calculate_row_count_per_claim_df(claim_df, claim_substantiation_df, claim_risk_df)
+        df = calculate_row_count_per_df(master['row_count'], df, substantiation_df, risk_df)
         product_lookup = product_df.set_index(ID)[SUBRANGE1__C].to_dict()
         tech_to_product = defaultdict(list)
         for _, row in product_df.iterrows():
@@ -209,11 +211,105 @@ class DownloadReport(VeevaClient):
                 tech_to_product[row[TECHNOLOGY_ID_C]].append(row[ID])
             if row[TECHNOLOGY_ID_1_C]:
                 tech_to_product[row[TECHNOLOGY_ID_1_C]].append(row[ID])
-        claim_df[SUBRANGE] = claim_df[PRODUCT__V].map(product_lookup)
-        claim_df[SUBRANGE] = claim_df[SUBRANGE].astype(bool)
-        claim_df[TECHNOLOGY] = claim_df[PRODUCT__V].apply(lambda p: tech_to_product.get(p, []))
-        claim_df[CLAIM_ORDER_C] = claim_df[CLAIM_ORDER_C].astype('Int64')
-        self.return_value[CLAIMS_DETAILS] = claim_df.to_dict(orient='records')
+        df[SUBRANGE] = df[master['product']].map(product_lookup)
+        df[SUBRANGE] = df[SUBRANGE].astype(bool)
+        df[TECHNOLOGY] = df[master['product']].apply(lambda p: tech_to_product.get(p, []))
+        df[CLAIM_ORDER_C] = df[CLAIM_ORDER_C].astype('Int64')
+        self.return_value[master['df']] = df.to_dict(orient='records')
+
+    def combine_substantiation_join(self, value: str):
+        master = substantiation_join[value]
+        substantiation_join_details_df = self.get_df(master['df'])
+        substantiation_details_df = self.get_df(master['substantiation'])
+        if substantiation_join_details_df.empty:
+            return
+        substantiation_join_details_df[SUBSTANTIATION_DOC_URL] = None
+        if substantiation_details_df.empty:
+            return
+
+        def build_doc_url(ref: str) -> str | None:
+            if pd.isna(ref) or ref is None:
+                return None
+            try:
+                doc_id, major_version, minor_version = ref.split("_")
+                return f"{self.veeva_domain}/ui/#doc_info/{doc_id}/{major_version}/{minor_version}"
+            except Exception:
+                return None
+        
+        substantiation_details_df[SUBSTANTIATION_DOC_URL] = substantiation_details_df[RELATED_REFERENCE__V].apply(build_doc_url)
+        url_lookup = substantiation_details_df.set_index(NAME__V)[SUBSTANTIATION_DOC_URL].to_dict()
+        substantiation_join_details_df[SUBSTANTIATION_DOC_URL] = substantiation_join_details_df[master['sub_name']].map(url_lookup)
+        substantiation_join_details_df[SUBSTANTIATION_DOC_URL] = substantiation_join_details_df[SUBSTANTIATION_DOC_URL].where(
+            substantiation_join_details_df[SUBSTANTIATION_DOC_URL].notna(), None
+        )
+        self.return_value[master['df']] = substantiation_join_details_df.to_dict(orient='records')
+
+    def combine_risk_assessment_claim(self):
+        risk_assessment_details_claim_df = self.get_df(RISK_ASSESSMENT_DETAILS_CLAIM)
+        if risk_assessment_details_claim_df.empty:
+            return
+        user_df = self.get_df(USER_DETAILS_BY_ID)
+        risk_assessment_details_claim_df[CREATED_BY_NAME] = risk_assessment_details_claim_df[CREATED_BY__V].apply(lambda x: get_details_by_id(x, user_df).get(NAME__V))
+        self.return_value[RISK_ASSESSMENT_DETAILS_CLAIM] = risk_assessment_details_claim_df.to_dict(orient='records')
+
+    def combine_product(self):
+        product_df = self.get_df(PRODUCT_DETAILS)
+        if product_df.empty:
+            return
+        la_df = self.get_df(LOCAL_ADAPTATION_DETAILS)
+        claim_df = self.get_df(CLAIMS_DETAILS)
+        product_df = check_claim_la_for_product_df(product_df, claim_df, la_df)
+        self.return_value[PRODUCT_DETAILS] = product_df.to_dict(orient='records')
+
+    def combine_risk_assessment_la(self):
+        risk_assessment_details_la_df = self.get_df(RISK_ASSESSMENT_DETAILS_LA)
+        if risk_assessment_details_la_df.empty:
+            return
+        user_df = self.get_df(USER_DETAILS_BY_ID)
+        risk_assessment_details_la_df[CREATED_BY_NAME] = risk_assessment_details_la_df[CREATED_BY__V].apply(lambda x: get_details_by_id(x, user_df).get(NAME__V))
+        self.return_value[RISK_ASSESSMENT_DETAILS_LA] = risk_assessment_details_la_df.to_dict(orient='records')
+
+    def combine_project_asset(self):
+        project_assets_df = self.get_df(PROJECT_ASSETS)
+        if project_assets_df.empty:
+            return
+        def get_geography_names(country_ids):
+            if not country_ids:
+                return None
+            return [get_assets_details_by_id(cid, self.get_df(ASSETS_COUNTRY_DETAILS_BY_ID)) for cid in country_ids]
+
+        def get_claim_names(claim_ids):
+            if not claim_ids:
+                return None
+            return [get_assets_details_by_id(cid, self.get_df(ASSETS_CLAIM_DETAILS_BY_ID)) for cid in claim_ids]
+
+        def get_la_names(la_ids):
+            if not la_ids:
+                return None
+            return [get_assets_details_by_id(lid, self.get_df(ASSETS_LA_DETAILS_BY_ID)) for lid in la_ids]
+
+        def get_user_name(user_id):
+            if not user_id:
+                return None
+            return get_details_by_id(user_id, self.get_df(USER_DETAILS_BY_ID)).get("name__v")
+
+        def get_mime_type(filename):
+            if not filename:
+                return None
+            mime, _ = mimetypes.guess_type(filename, strict=False)
+            return mime if mime else pathlib.Path(filename).suffix
+
+        def build_asset_link(row):
+            return f"{self.veeva_domain}/ui/#doc_info/{row['id']}/{row['major_version_number__v']}/{row['minor_version_number__v']}"
+
+        # --- Apply transformations ---
+        project_assets_df["country__v_name"] = project_assets_df["country__v"].apply(get_geography_names)
+        project_assets_df["related_claims__c_name"] = project_assets_df["related_claims__c"].apply(get_claim_names)
+        project_assets_df["related_local_adaptations__c_name"] = project_assets_df["related_local_adaptations__c"].apply(get_la_names)
+        project_assets_df["created_by_name"] = project_assets_df["created_by__v"].apply(get_user_name)
+        project_assets_df["file_mime_type"] = project_assets_df["filename__v"].apply(get_mime_type)
+        project_assets_df["asset_link"] = project_assets_df.apply(build_asset_link, axis=1)
+        self.return_value[PROJECT_ASSETS] = project_assets_df.to_dict(orient='records')
 
     async def run(self):
         pending = set(self.tasks.keys())
@@ -227,9 +323,9 @@ class DownloadReport(VeevaClient):
                 pending.remove(key)
     
 class VeevaMasterReport(DownloadReport):
-    report_name = "veeva_master"
     def __init__(self, veeva_domain, veeva_api_version, session_id, app_id, project_id):
         super().__init__(veeva_domain, veeva_api_version, session_id, app_id, project_id)
+        self.report_name = "veeva_master"
         self.tasks: dict[str, tuple[list[str], Callable[[], Awaitable]]] = {
             PROJECT_DETAILS: ([], lambda: self.get_details(PROJECT_DETAILS)), # dep - Dependency. ([list of dep], function)
             PROJECT_GEOGRAPHY_DETAILS: ([], lambda: self.get_details(PROJECT_GEOGRAPHY_DETAILS)),
@@ -264,5 +360,12 @@ class VeevaMasterReport(DownloadReport):
         self.combine_project()
         self.combine_technology_product_data()
         self.combine_product_child_composition()
-        self.combine_claim()
+        self.combine_row_count('claim')
+        self.combine_substantiation_join('claim')
+        self.combine_risk_assessment_claim()
+        self.combine_row_count('la')
+        self.combine_substantiation_join('la')
+        self.combine_product()
+        self.combine_risk_assessment_la()
+        self.combine_project_asset()
         return self.return_value

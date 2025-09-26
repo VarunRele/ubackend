@@ -30,15 +30,18 @@ ASSETS_LA_DETAILS_BY_ID = 'assets_la_details_by_id'
 
 
 PRODUCT__V = 'product__v'
+PRODUCT__C = 'product__c'
 TECHNOLOGY_ID_C = 'technology_id__c'
 TECHNOLOGY_ID_1_C = 'technology_id_1__c'
 CLAIM_V = 'claim__v'
+CLAIM_C = 'claim__c'
 CLAIM_ORDER_C = 'claim_order__c'
 ID = 'id'
 SUBSTANTIATION__V = 'substantiation__v'
 SUBSTANTIATION__C ='substantiation__c'
 RISK_ASSESSMENT__C = 'risk_assessment__c'
 LOCAL_ADAPTATION__V ='local_adaptation__v'
+LOCAL_ADAPTATION__C = 'local_adaptation__c'
 CREATED_BY__V ='created_by__v'
 CHILD__VR_GEOGRAPHY__C = 'child__vr.geography__c'
 CHILD__VR_FORMULATION_DOCUMENT__C = 'child__vr.formulation_document__c'
@@ -64,3 +67,37 @@ MAJOR_VERSION_NUMBER__V = 'major_version_number__v'
 SUBRANGE1__C = 'subrange1__c'
 SUBRANGE = 'subrange'
 TECHNOLOGY = 'technology'
+
+SUBSTANTIATION_DOC_URL = 'substantiation_doc_url'
+RELATED_REFERENCE__V = 'related_reference__v'
+
+
+row_count_map = {
+    'la' : {
+        'df': LOCAL_ADAPTATION_DETAILS,
+        'substantiation': LOCAL_ADAPTATION_SUBSTANTIATION_JOIN_DETAILS,
+        'risk': LOCAL_ADAPTATION_RISK_ASSESSMENT_DETAILS,
+        'row_count': LOCAL_ADAPTATION__C,
+        'product': PRODUCT__C
+    },
+    'claim' : {
+        'df': CLAIMS_DETAILS,
+        'substantiation': CLAIM_SUBSTANTIATION_JOIN_DETAILS,
+        'risk': CLAIM_RISK_ASSESSMENT_DETAILS,
+        'row_count': CLAIM_V,
+        'product': PRODUCT__V
+    }
+}
+
+substantiation_join = {
+    'claim': {
+        'df': CLAIM_SUBSTANTIATION_JOIN_DETAILS,
+        'substantiation': SUBSTANTIATION_CLAIMS_DETAILS,
+        'sub_name': 'substantiation__vr.name__v'
+    },
+    'la': {
+        'df': LOCAL_ADAPTATION_SUBSTANTIATION_JOIN_DETAILS,
+        'substantiation': SUBSTANTIATION_LOCAL_ADAPTATION_DETAILS,
+        'sub_name': 'substantiation__cr.name__v'
+    }
+}

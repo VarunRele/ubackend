@@ -18,15 +18,15 @@ def get_query_params_list_element(df: pd.DataFrame, column: str) -> str:
     )
 
 
-def calculate_row_count_per_claim_df(claim_df: pd.DataFrame, substantiation_df: pd.DataFrame, risk_df: pd.DataFrame) -> pd.DataFrame:
-    claim_df[SUBRANGE] = False
-    claim_df[TECHNOLOGY] = [[] for _ in range(len(claim_df))]
-    sub_counts = substantiation_df['claim__v'].value_counts() if not substantiation_df.empty else pd.Series(dtype=int)
-    risk_counts = risk_df['claim__c'].value_counts() if not risk_df.empty else pd.Series(dtype=int)
+def calculate_row_count_per_df(col: str, df: pd.DataFrame, substantiation_df: pd.DataFrame, risk_df: pd.DataFrame) -> pd.DataFrame:
+    df[SUBRANGE] = False
+    df[TECHNOLOGY] = [[] for _ in range(len(df))]
+    sub_counts = substantiation_df[col].value_counts() if not substantiation_df.empty else pd.Series(dtype=int)
+    risk_counts = risk_df[col if col == LOCAL_ADAPTATION__C else CLAIM_C].value_counts() if not risk_df.empty else pd.Series(dtype=int)
 
-    if claim_df.empty:
-        claim_df['max_row_count'] = pd.Series(dtype=int)
-        return claim_df
+    if df.empty:
+        df['max_row_count'] = pd.Series(dtype=int)
+        return df
     
     def compute_max_row_count(claim_id):
         sub_count = sub_counts.get(claim_id, 0)
@@ -34,29 +34,8 @@ def calculate_row_count_per_claim_df(claim_df: pd.DataFrame, substantiation_df: 
         max_rows = max(sub_count, risk_count)
         return max(max_rows, MIN_ROW_PER_CLAIM)
 
-    claim_df['max_row_count'] = claim_df['id'].apply(compute_max_row_count)
-    return claim_df
-
-
-def calculate_row_count_per_la_df(la_df: pd.DataFrame, substantiation_df: pd.DataFrame, risk_df: pd.DataFrame) -> pd.DataFrame:
-    la_df[SUBRANGE] = False
-    la_df[TECHNOLOGY] = [[] for _ in range(len(la_df))]
-    sub_counts = substantiation_df['local_adaptation__c'].value_counts() if not substantiation_df.empty else pd.Series(dtype=int)
-    risk_counts = risk_df['local_adaptation__c'].value_counts() if not risk_df.empty else pd.Series(dtype=int)
-
-    if la_df.empty:
-        la_df['max_row_count'] = pd.Series(dtype=int)
-        return la_df
-
-    def compute_max_row_count(la_id):
-        sub_count = sub_counts.get(la_id, 0)
-        risk_count = risk_counts.get(la_id, 0)
-        max_rows = max(sub_count, risk_count)
-        return max(max_rows, MIN_ROW_PER_LA)
-
-    la_df['max_row_count'] = la_df['id'].apply(compute_max_row_count)
-    return la_df
-
+    df['max_row_count'] = df['id'].apply(compute_max_row_count)
+    return df
 
 def check_claim_la_for_product_df(product_df: pd.DataFrame, claim_df: pd.DataFrame, la_df: pd.DataFrame) -> pd.DataFrame:
     claim_product_ids = set(claim_df['product__v'].dropna()) if not claim_df.empty else set()

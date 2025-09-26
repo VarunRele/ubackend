@@ -32,16 +32,19 @@ class VeevaClient:
         headers = self._get_header(content_type="application/x-www-form-urlencoded")
         payload = f"q={query_string}"
         data_list = []
-        async with aiohttp.ClientSession() as session:
-            while True:
-                async with session.post(url, headers=headers, data=payload) as resp:
-                    value = await resp.json()
-                status = value.get("responseStatus", "").lower()
-                if status not in {SUCCESS, WARNING}:
-                    raise VeevaApiFailed(value)
-                data_list.extend(value.get("data", []))
-                details = value.get("responseDetails", {})
-                if "next_page" not in details:
-                    break
-                url = f"{self.veeva_domain}{details['next_page']}" 
+        try:
+            async with aiohttp.ClientSession() as session:
+                while True:
+                    async with session.post(url, headers=headers, data=payload) as resp:
+                        value = await resp.json()
+                    status = value.get("responseStatus", "").lower()
+                    if status not in {SUCCESS, WARNING}:
+                        raise VeevaApiFailed(value)
+                    data_list.extend(value.get("data", []))
+                    details = value.get("responseDetails", {})
+                    if "next_page" not in details:
+                        break
+                    url = f"{self.veeva_domain}{details['next_page']}" 
+        except Exception as ex:
+            logger.error(ex)
         return data_list
